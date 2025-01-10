@@ -11,7 +11,6 @@ A comprehensive resource for Solidity developers containing best practices, opti
 - [Development Tools](#development-tools)
 - [Code Architecture](#code-architecture)
 - [Advanced Concepts](#advanced-concepts)
-- [Contributing](#contributing)
 
 ## ✨ Best Practices
 - 🏗️ Smart contract design patterns
