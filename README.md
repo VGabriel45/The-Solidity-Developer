@@ -1,4 +1,3 @@
-# 🔷 The-Solidity-Developer
 # 📚 The Solidity Developer's Handbook
 
 A comprehensive resource for Solidity developers containing best practices, optimizations, security guidelines, tools, and architectural patterns. This repository aims to be a living document maintained by the community, for the community. ⚡️
