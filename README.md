@@ -74,7 +74,7 @@ MIT License
 
 ## 👥 Contributors
 
-- [VGabriel45](https://github.com/VGabriel45) - *Initial work*
+- [VGabriel45](https://github.com/VGabriel45)
 
 ---
 
