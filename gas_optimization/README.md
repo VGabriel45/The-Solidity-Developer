@@ -1,65 +1,97 @@
-# Gas Optimization Techniques
+## Gas Optimization Techniques
 
-## 1. Storage Optimization
+1. **Storage Variables**
+   - Storage operations are expensive (20,000 gas for saving, 5,000 gas for updating)
+   - Always cache storage variables in memory within functions
+   - Pack multiple storage variables into single slots when possible
+   - Free unused storage slots to get 15,000 gas refund
+   - Make variables constant whenever possible
 
-### Storage Costs
-- Initial storage write costs 20,000 gas (SSTORE opcode)
-- Modifying storage costs 5,000 gas
-- Reading from storage costs 200 gas (SLOAD opcode)
-- Storage variable declarations have no gas cost (only initialization costs gas)
+2. **Data Types and Packing**
+   - Use bytes32 instead of string/bytes when possible
+   - Use smaller uint types only when packing with other variables
+   - Variable packing only works in storage, not in memory/calldata
+   - Pack inherited contract variables efficiently
 
-### Best Practices
-- Cache storage variables in memory within functions
-- Calculate all updates using memory variables before updating storage
-- Pack multiple storage variables into single 32-byte slots when possible
-- Pack struct members efficiently to minimize slots used
-- Don't initialize variables to zero values (e.g. use `uint256 i;` instead of `uint256 i = 0;`)
-- Use `constant` and `immutable` for values that don't change
+3. **Memory vs Storage**
+   - Avoid copying arrays from storage to memory
+   - Use storage pointers instead of memory for large arrays
+   - Memory costs increase quadratically with size
 
-### Storage Refunds
-- Zero out storage variables when no longer needed (refunds 15,000 gas)
-- Using `selfdestruct` refunds 24,000 gas (limited to half of gas used in call)
+4. **Function Visibility**
+   - Use external instead of public when possible
+   - External functions use calldata instead of memory for parameters
+   - Place frequently called functions earlier in contract
+   - Make functions payable if they don't handle Ether
+   
+5. **Function Execution**
+   - Reduce number of function parameters
+   - Use modifiers carefully as they increase code size
+   - Short-circuit operations (place cheaper checks first)
+   - Use unchecked blocks for math that can't overflow
 
-### Data Types and Packing
-- Use `bytes32` when possible (most optimized storage type)
-- Use smallest possible fixed bytes type (`bytes1` to `bytes32`) if length is limited
-- `bytes32` is cheaper than `string`
-- Variable packing only works in storage, not in memory or calldata
-- Packing function arguments or local variables provides no savings
-- Small integers (uint8, etc) use full 32-byte slots in isolation
-- Real savings come from packing multiple small variables into single slots
+6. **Error Handling**
+   - Use custom errors instead of strings
+   - Keep require/revert messages short
+   - Use assert only for invariant checking
 
-### Inheritance & Variable Packing
-- Variables in child contracts can be packed with parent variables
-- Variable order follows C3 linearization (child variables come after parent)
-- Strategic ordering of inherited contracts can optimize packing
-- Consider variable layouts across inheritance chain
+7. **Use shift right/left instead of division/multiplication if possible**
+    - While the DIV / MUL opcode uses 5 gas, the SHR / SHL opcode only uses 3 gas. Furthermore, beware that Solidity's division operation also includes a division-by-0 prevention which is bypassed using shifting. Eventually, overflow checks are never performed for shift operations as they are done for arithmetic operations. Instead, the result is always truncated.
 
-### Memory vs Storage
-- Avoid unnecessary copying between memory and storage
-- Use storage pointers for arrays instead of copying to memory
-- Memory costs increase quadratically with size
-- Memory operations:
-  - First 32 bytes: 3 gas
-  - Next 32 bytes: 3 gas
-  - Subsequent 32 bytes: ~3 gas + quadratic cost
-- Consider tradeoffs between storage and memory based on:
-  - Array size
-  - Number of operations
-  - Access patterns
+    ![gas_optimization_shift_vs_div_mul](./images/bitwise.png)
 
-### Function Optimizations
-- Use `external` over `public` when possible (calldata vs memory)
-- Make functions `payable` if they don't handle ETH (saves gas)
-- Order frequently called functions earlier in contract
-- Reduce parameter count and size
-- Consider inline functions vs modifiers based on usage
 
-### Advanced Techniques
-- Use unchecked blocks for safe arithmetic
-- Minimize contract-to-contract calls (EXTCODESIZE is expensive)
-- Use libraries for complex, reusable logic
-- Consider ERC1167 minimal proxy for deploying multiple instances
-- Use Merkle proofs for validating large datasets efficiently
+8. **Use != 0 instead of > 0 for unsigned integer comparison**
+    - When dealing with unsigned integer types, comparisons with != 0 are cheaper then with > 0
 
-Each optimization should be carefully considered against code readability and maintenance. Not all optimizations are worth the added complexity.
+    ![gas_optimization_shift_vs_div_mul](./images/integer_comparison.png)
+
+9. **Caching the length in for loops**
+    ```solidity
+        uint length = arr.length;
+        for (uint i = 0; i < length; i++) {
+            // do something that doesn't change arr.length
+        }
+    ```
+    - In the above example, the sload or mload or calldataload operation is only called once and subsequently replaced by a cheap dupN instruction. Even though mload , calldataload and dupN have the same gas cost, mload and calldataload needs an additional dupN to put the offset in the stack, i.e., an extra 3 gas.
+    - This optimization is especially important if it is a storage array or if it is a lengthy for loop.
+
+10. **State variables that can be set to immutable**
+    - Solidity 0.6.5 introduced immutable as a major feature. It allows setting contract-level variables at construction time which gets stored in code rather than storage.
+    - Consider you have a variable "owner" at contract level which is set during construction time. This variable is not immutable so each call to the function owner() reads from storage, using a sload . After EIP-2929, this costs 2100 gas cold or 100 gas warm. We can make this cheaper by making the variable immutable, now each storage read of the owner state variable is replaced by the instruction push32 value , where value is set during contract construction time. This costs only 3 gas.
+
+11. **Consider having short revert strings**
+
+12. **Consider using custom errors instead of revert strings**
+
+13. **The increment in for loop postcondition can be made unchecked**
+    - Consider the following loop:
+    ```solidity
+        for (uint i = 0; i < arr.length; i++) {
+            // do something that doesn't change arr.length
+        }
+    ```
+    - The increment in the postcondition can be made unchecked to save 3 gas per iteration.
+    ```solidity
+        for (uint256 i = 0; i < length; ) {
+            // do something that doesn't change the value of i
+            unchecked {
+                i++;
+            }
+        }
+    ```
+    - Note that it’s important that the call to unchecked_inc is inlined. This is only possible for solidity versions starting from 0.8.2.
+
+14. **Payable constructor**
+    - You can cut out 10 opcodes in the creation-time EVM bytecode if you declare a constructor payable. The following opcodes are cut out:
+        - CALLVALUE
+        - DUP1
+        - ISZERO
+        - PUSH2
+        - JUMPI
+        - PUSH1
+        - DUP1
+        - REVERT
+        - JUMPDEST
+        - POP
+    - This saves around 200 gas for deployment.
